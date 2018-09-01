@@ -4,10 +4,11 @@ const PORT = 3001 || process.env.PORT
 const bodyParser = require('body-parser')
 var morgan = require('morgan')
 const persons = require('./modules/persons.js')
+const Person = require('./models/person.js')
 
 app.use(bodyParser.json())
 
-app.use(express.static('build'))
+app.use(express.static('frontend/build'))
 
 app.use(function(req, res, next) {
   res.header("Access-Control-Allow-Origin", "*");
@@ -23,45 +24,84 @@ morgan.token('postData', (req,res) => {
 app.use(morgan(':method :url :postData :status :res[content-length] - :response-time ms'))
 
 app.get('/api/persons', (req,res) => {
-  res.send(persons)
+  Person.find({}).then((persons) => {
+    res.json(persons.map(Person.format))
+  }).catch(error => {
+    console.log(error)
+    res.status(400).send({ error: error })
+  })
 })
 
 app.get('/api/persons/:id', (req,res) => {
-  const id = Number(req.params.id)
-  const person = persons.persons.find(p => p.id === id)
-  if(person) {
-    res.send(person)
-  } else {
-    res.status(404).end()
-  }
+  const id = req.params.id
+  
+  Person.findById(id).then(result => {
+    res.json(Person.format(result))
+  })
+  .catch(error => {
+    response.status(400).send({ error: 'malformatted id' })
+  })
 })
 
 app.delete('/api/persons/:id', (req,res) => {
-  const id = Number(req.params.id)
-  persons.persons = persons.persons.filter(p => p.id !== id)
-  res.status(200).end()
+  const id = req.params.id
+  Person.findByIdAndRemove(id).then(result =>{
+    res.status(200).end()
+  })
+  .catch(error => {
+    res.status(400).send({ error: 'malformatted id' })
+  })
 })
 
 app.post('/api/persons', (req,res) => {
   let person = req.body
-  const existing = persons.persons.filter(p => p.name === person.name)
   
   if(person.name === '' || person.name === undefined) {
     return res.status(400).json({error: 'name missing'})
   }
 
-  if(person.number === '' || person.number === undefined) {
+  if(person.phone === '' || person.phone === undefined) {
     return res.status(400).json({error: 'number missing'})
   }
 
-  if(existing.length > 0) {
-    return res.status(400).json({error: 'person already in list'})
+  const newPerson = new Person({
+    name: person.name,
+    phone: person.phone
+  })
+
+  Person.find({name:person.name}).then(result => {
+    if(result.length === 0) {
+      newPerson.save().then((savedPerson) => {
+        res.json(Person.format(savedPerson))
+      }).catch(error => {
+        console.log(error)
+        response.status(400).send({ error: error })
+      })
+    } else {
+      res.status(400).send({ error: `User name ${person.name} already exists!` })
+    }
+  }).catch(error => {
+    console.log(error)
+    res.status(400).send({ error: error })
+  })
+})
+
+app.put('/api/persons/:id', (req,res) => {
+  const person = req.body
+  const id = req.params.id
+
+  const updatedPerson = {
+    name: person.name,
+    phone: person.phone
   }
 
-  person.id = Math.floor(Math.random() * 9990)
-  persons.persons.push(person)
+  Person.findByIdAndUpdate(id, updatedPerson, {new:true}).then(updatedPerson => {
+    res.json(Person.format(updatedPerson))
+  }).catch(error => {
+    console.log(error)
+    res.status(400).send({ error: error })
+  })
 
-  res.send(person)
 })
 
 app.get('/info', (req,res) => {
